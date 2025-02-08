@@ -65,7 +65,7 @@ class MainActivity : AppCompatActivity() {
         // Sample list of models
         val models = listOf(
             ModelItem("Sofa", "models/sofa.glb", R.drawable.ic_placeholder),
-            ModelItem("Plane", "models/plane.glb", R.drawable.ic_placeholder),
+            ModelItem("Chair2", "models/chair(1).glb", R.drawable.ic_placeholder),
             ModelItem("Chair", "models/chair.glb", R.drawable.ic_placeholder),
             ModelItem("Table", "models/table.glb", R.drawable.ic_placeholder)
         )
