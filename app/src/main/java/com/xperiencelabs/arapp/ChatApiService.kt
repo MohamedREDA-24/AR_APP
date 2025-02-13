@@ -5,6 +5,6 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 interface ChatApiService {
-    @POST("chat") // Adjust the path according to your FastAPI route
-    fun sendMessage(@Body request: MessageRequest): Call<MessageResponse>
+    @POST("chat")  // Adjust endpoint as needed
+    fun sendMessage(@Body request: MessageRequest): Call<List<MessageResponse>>
 }

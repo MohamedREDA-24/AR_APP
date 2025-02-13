@@ -2,6 +2,7 @@ package com.xperiencelabs.arapp
 
 import ModelAdapter
 import android.os.Bundle
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -14,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.ar.core.Config
+//import com.xperiencelabs.arapp.ChatAdapter.Companion.BASE_IMAGE_URL
 import io.github.sceneview.ar.ArSceneView
 import io.github.sceneview.ar.node.ArModelNode
 import io.github.sceneview.ar.node.PlacementMode
@@ -29,17 +31,32 @@ class MainActivity : AppCompatActivity() {
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private lateinit var rotateGestureDetector: GestureDetector
 
-    private var currentRotation = 0f  // Track model rotation
+    // Variable to track the current rotation of the model.
+    private var currentRotation = 0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Setup the DrawerLayout
+        // Retrieve passed image URL(s) from the intent.
+        val passedImageUrlList = intent.getStringArrayListExtra("IMAGE_URL_LIST")
+        val imageUrlList2d = intent.getStringArrayListExtra("IMAGE_URL_LIST_2D")
+
+        if (passedImageUrlList != null && passedImageUrlList.isNotEmpty()) {
+            Log.d("MainActivity", "Received image URLs:")
+            passedImageUrlList.forEachIndexed { index, url ->
+                Log.d("MainActivity", "Image URL ${index + 1}: $url")
+            }
+        } else {
+            Log.d("MainActivity", "No image URLs provided in the intent!")
+            // Optionally, you could finish() the activity or handle this scenario differently.
+        }
+
+        // Setup the DrawerLayout.
         drawerLayout = findViewById(R.id.drawer_layout)
         drawerLayout.openDrawer(GravityCompat.START)
 
-        // Setup AR SceneView
+        // Setup the AR SceneView.
         sceneView = findViewById<ArSceneView>(R.id.sceneView).apply {
             this.lightEstimationMode = Config.LightEstimationMode.DISABLED
         }
@@ -52,23 +69,35 @@ class MainActivity : AppCompatActivity() {
         val openSidebarButton = findViewById<Button>(R.id.open_sidebar_button)
         openSidebarButton.setOnClickListener {
             if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
-                drawerLayout.closeDrawer(GravityCompat.START) // Close if open
+                drawerLayout.closeDrawer(GravityCompat.START)
             } else {
-                drawerLayout.openDrawer(GravityCompat.START) // Open if closed
+                drawerLayout.openDrawer(GravityCompat.START)
             }
         }
+         val BASE_IMAGE_URL = "http://13.92.86.232/static/" // Use your server URL
 
-        // Setup the sidebar (RecyclerView)
+
+        // Setup the sidebar (RecyclerView).
         val modelListRecyclerView = findViewById<RecyclerView>(R.id.model_list)
         modelListRecyclerView.layoutManager = LinearLayoutManager(this)
 
-        // Sample list of models
-        val models = listOf(
-            ModelItem("Sofa", "models/sofa.glb", R.drawable.ic_placeholder),
-            ModelItem("Chair2", "models/chaise.glb", R.drawable.ic_placeholder),
-            ModelItem("Chair", "models/chair.glb", R.drawable.ic_placeholder),
-            ModelItem("Table", "models/table.glb", R.drawable.ic_placeholder)
-        )
+        // Dynamically build the models list using the passed URL variables.
+        // If no URL list was passed, you can optionally create a default list.
+//        Log.d("ChatActivity", "---------------------------: $passedImageUrlList")
+
+        val models = if (!passedImageUrlList.isNullOrEmpty()) {
+            passedImageUrlList.mapIndexed { index, url ->
+                ModelItem(
+                    "Item ${index + 1}",
+                    BASE_IMAGE_URL + url,
+                    BASE_IMAGE_URL + (imageUrlList2d?.get(index) ?: "")
+                )
+            }
+        } else {
+            emptyList()
+        }
+
+
 
         val adapter = ModelAdapter(models) { modelItem ->
             loadModel(modelItem)
@@ -78,10 +107,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Loads a selected model into the AR scene.
+     * Loads the selected model into the AR scene.
      */
     private fun loadModel(modelItem: ModelItem) {
-        // Ensure we remove the previous model before adding a new one
+        // Remove any previous model.
         if (::modelNode.isInitialized) {
             sceneView.removeChild(modelNode)
         }
@@ -89,28 +118,25 @@ class MainActivity : AppCompatActivity() {
         modelNode = ArModelNode(sceneView.engine, PlacementMode.INSTANT).apply {
             loadModelGlbAsync(
                 glbFileLocation = modelItem.modelPath,
-                scaleToUnits = 1f,  // Default scale
+                scaleToUnits = 1f,
                 centerOrigin = Position(-0.5f)
             ) {
                 sceneView.planeRenderer.isVisible = true
             }
-
             onAnchorChanged = {
                 placeButton.isGone = false
             }
         }
 
         sceneView.addChild(modelNode)
-
-        // 🔹 Always show the button when a new model is loaded
         placeButton.isGone = false
 
-        // 🔹 Setup Gestures (Scaling + Rotating)
+        // Setup gesture controls for scaling and rotation.
         setupGestureControls()
     }
 
     /**
-     * Anchors the current model.
+     * Anchors the current model in the AR scene.
      */
     private fun placeModel() {
         modelNode.anchor()
@@ -118,10 +144,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Handles pinch-to-zoom (scaling) and drag-to-rotate gestures.
+     * Sets up pinch-to-zoom (scaling) and drag-to-rotate gesture controls.
      */
     private fun setupGestureControls() {
-        // Pinch to Scale Gesture
+        // Pinch-to-scale gesture.
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (::modelNode.isInitialized) {
@@ -133,26 +159,22 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Drag to Rotate Gesture
+        // Drag-to-rotate gesture.
         rotateGestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onScroll(
-                e1: MotionEvent,
-                e2: MotionEvent,
-                distanceX: Float,
-                distanceY: Float
-            ): Boolean {
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
                 if (::modelNode.isInitialized) {
-                    currentRotation -= distanceX * 0.5f  // Adjust sensitivity
+                    currentRotation -= distanceX * 0.5f  // Adjust sensitivity as needed.
                     modelNode.rotation = Rotation(y = currentRotation)
                 }
                 return true
             }
         })
 
-        // Attach both gesture detectors to the SceneView
+        // Attach the gesture detectors to the SceneView.
         sceneView.setOnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
             rotateGestureDetector.onTouchEvent(event)
+            true
         }
     }
 }

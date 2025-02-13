@@ -4,6 +4,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.xperiencelabs.arapp.ModelItem
 import com.xperiencelabs.arapp.R
 
@@ -25,8 +26,14 @@ class ModelAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val model = models[position]
-        holder.modelName.text = model.name  // ✅ Bind Model Name
-        holder.modelThumbnail.setImageResource(R.drawable.ic_placeholder)
+        holder.modelName.text = model.name
+
+        // Load dynamic image into modelThumbnail using Glide.
+        Glide.with(holder.itemView.context)
+            .load(model.thumbnailRes) // Assuming your ModelItem property for the 2D URL is named "dynamicImageUrl"
+//            .placeholder(R.drawable.placeholder) // optional placeholder
+            .error(R.drawable.error) // optional error drawable
+            .into(holder.modelThumbnail)
 
         holder.itemView.setOnClickListener {
             onItemClick(model)

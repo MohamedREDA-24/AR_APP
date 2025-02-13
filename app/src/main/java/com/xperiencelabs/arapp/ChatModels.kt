@@ -5,5 +5,6 @@ data class MessageRequest(
 )
 
 data class MessageResponse(
-    val response: String  // Adjust this field based on what your API returns
+    val image_path: String,
+    val score: Float
 )
