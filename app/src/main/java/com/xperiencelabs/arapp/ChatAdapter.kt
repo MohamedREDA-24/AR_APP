@@ -15,9 +15,11 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
     companion object {
         private const val VIEW_TYPE_TEXT_SENT = 1
         private const val VIEW_TYPE_TEXT_REPLY = 2
-        private const val VIEW_TYPE_IMAGE = 3
-        private const val BASE_IMAGE_URL = "http://13.92.86.232/static/" // Use your server URL
+        private const val VIEW_TYPE_IMAGE_SENT = 3
+        private const val VIEW_TYPE_IMAGE_REPLY = 4
+        private const val BASE_IMAGE_URL = "http://13.92.86.232/static/" // For server images
     }
+
 
     // ViewHolder for text messages sent by the user
     inner class TextSentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -37,11 +39,12 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
     override fun getItemViewType(position: Int): Int {
         val chatMessage = messages[position]
         return if (chatMessage.imageUrl != null) {
-            VIEW_TYPE_IMAGE
+            if (chatMessage.isSent) VIEW_TYPE_IMAGE_SENT else VIEW_TYPE_IMAGE_REPLY
         } else {
-            if (chatMessage.isReply) VIEW_TYPE_TEXT_REPLY else VIEW_TYPE_TEXT_SENT
+            if (chatMessage.isSent) VIEW_TYPE_TEXT_SENT else VIEW_TYPE_TEXT_REPLY
         }
     }
+
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
@@ -55,7 +58,12 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
                     .inflate(R.layout.item_chat_received, parent, false)
                 TextReplyViewHolder(view)
             }
-            VIEW_TYPE_IMAGE -> {
+            VIEW_TYPE_IMAGE_SENT -> {
+                val view = LayoutInflater.from(parent.context)
+                    .inflate(R.layout.item_chat_image_sent, parent, false)
+                ImageViewHolder(view)
+            }
+            VIEW_TYPE_IMAGE_REPLY -> {
                 val view = LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_chat_image, parent, false)
                 ImageViewHolder(view)
@@ -74,14 +82,15 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
                 holder.messageText.text = chatMessage.message
             }
             is ImageViewHolder -> {
-                // Construct full image URL from server response
-                val imageUrl = BASE_IMAGE_URL + chatMessage.imageUrl
-
+                // For user images, use the local URI directly; for server images, prepend BASE_IMAGE_URL.
+                val imageUrl = if (chatMessage.isSent && chatMessage.imageUrl?.startsWith("content://") == true)  {
+                    chatMessage.imageUrl
+                }  else {
+                    BASE_IMAGE_URL + chatMessage.imageUrl
+                }
                 Glide.with(holder.itemView.context)
                     .load(imageUrl)
-                    .transition(DrawableTransitionOptions.withCrossFade()) // Smooth transition
-//                    .placeholder(R.drawable.placeholder_image) // Optional: Add a placeholder
-//                    .error(R.drawable.error_placeholder) // Optional: Add error fallback
+                    .transition(DrawableTransitionOptions.withCrossFade())
                     .into(holder.chatImage)
             }
         }
