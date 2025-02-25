@@ -4,10 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.Html
 import android.util.Log
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -18,9 +21,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.BufferedReader
-import java.io.InputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -35,6 +40,7 @@ class ChatActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(Dispatchers.Main + Job())
     private lateinit var visualize3DButton: Button
     private lateinit var uploadImageButton: Button
+    private lateinit var instructionsButton: ImageButton  // Top-left button for instructions
     private var latestImageUrl: String? = null
     private var sessionId: String? = null
 
@@ -50,12 +56,13 @@ class ChatActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat)
 
-        // Initialize views
+        // Initialize views from the layout
         chatRecyclerView = findViewById(R.id.chat_recycler_view)
         messageInput = findViewById(R.id.message_input)
         sendButton = findViewById(R.id.send_button)
         visualize3DButton = findViewById(R.id.btn_visualize_3d)
         uploadImageButton = findViewById(R.id.btn_upload_image)
+        instructionsButton = findViewById(R.id.btn_left_icon) // This is our info/instructions button
 
         // Setup initial states
         visualize3DButton.isEnabled = false
@@ -82,6 +89,25 @@ class ChatActivity : AppCompatActivity() {
         sendButton.setOnClickListener { handleSendMessage() }
         visualize3DButton.setOnClickListener { handle3DVisualization() }
         uploadImageButton.setOnClickListener { openImagePicker() }
+        instructionsButton.setOnClickListener { showInstructionsDialog() } // Show pop-up on tap
+    }
+
+    // Show a dialog with instructions for the user
+    private fun showInstructionsDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Instructions")
+        builder.setMessage(
+            "1-Start a chat to share your furniture preferences and features.\n\n" +
+                    "2. When you finish describing your furniture features, type “done” to receive your furniture recommendation from our store.\n\n" +
+                    "3. Use the AR mode to try the selected furniture in your room and screenshot  an image that includes both your room and the chosen piece.\n\n" +
+                    "4. Exit AR mode and click the external button (camera button) to either edit your room style or receive a new furniture suggestion.\n\n" +
+                    "5. If prompted with “Recommend one? (yes/no)” and you respond with “no,” the system will fetch an alternative recommendation from trusted sources (e.g., Amazon).\n\n"+
+                    "6. You can repeat this cycle by confirming “New recommendation? (yes/no)” to view additional options.\n\n"
+        )
+        builder.setPositiveButton("OK") { dialog, _ ->
+            dialog.dismiss()
+        }
+        builder.show()
     }
 
     private fun handleSendMessage() {
@@ -150,7 +176,7 @@ class ChatActivity : AppCompatActivity() {
 
     private suspend fun makeChatRequest(userInput: String, sessionId: String): String =
         withContext(Dispatchers.IO) {
-            val url = URL("http://13.92.86.232/chat")
+            val url = URL("http://13.92.86.232/my-chat/")
             var result = ""
 
             (url.openConnection() as HttpURLConnection).apply {
@@ -159,9 +185,10 @@ class ChatActivity : AppCompatActivity() {
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
 
                 val jsonInput = JSONObject().apply {
-                    put("session_id", sessionId)
-                    put("message", userInput)
+//                    put("session_id", sessionId)
+                    put("text", userInput)
                 }.toString()
+//                Log.d("ChatActivity", "Chat Response: $jsonInput")
 
                 outputStream.use { os ->
                     OutputStreamWriter(os, "UTF-8").use { writer ->
@@ -213,6 +240,7 @@ class ChatActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun addUserImageMessage(uri: Uri) {
         // Create a chat message using the image URI.
         // Make sure your ChatAdapter and ChatMessage model can handle image messages.
@@ -287,109 +315,229 @@ class ChatActivity : AppCompatActivity() {
 
     private fun handleServerResponse(response: String) {
         try {
-            Log.d("ChatActivity", "Parsing response: $response")
-            val jsonObject = JSONObject(response)
+            Log.d("ChatActivity", "Raw response: $response")
 
-            // Update session ID if present
-            jsonObject.optString("session_id", "")?.takeIf { it.isNotEmpty() }?.let {
-                sessionId = it
-                Log.d("ChatActivity", "Updated session ID: $it")
+            // Parse the outer JSON response
+            val jsonResponse = JSONObject(response)
+
+            // First check if it's a furniture recommendation response
+            if (jsonResponse.has("results")) {
+                handleFurnitureResults(jsonResponse)
+                return
             }
 
-            // Handle the assistant's text response
-            val assistantResponse = jsonObject.optString("assistant_response", "")
-            if (assistantResponse.isNotEmpty()) {
-                runOnUiThread {
-                    messages.add(
-                        ChatMessage(
-                            message = assistantResponse,
-                            isSent = false,
-                            isReply = true
-                        )
-                    )
-                    chatAdapter.notifyItemInserted(messages.size - 1)
-                    chatRecyclerView.smoothScrollToPosition(messages.size - 1)
-                }
+            // Existing handling for other response types
+            val responseContent = jsonResponse.optString("response")
+            when (val parsed = tryParseJson(responseContent)) {
+                is JSONArray -> handleRagResponse(parsed)
+                is JSONObject -> handleJsonObject(parsed)
+                else -> handlePotentialMalformedResponse(responseContent)
             }
-
-            // New: Handle internal_data images if available
-            if (jsonObject.has("internal_data")) {
-                val internalData = jsonObject.getJSONObject("internal_data")
-                Log.d("---------------ChatActivity", "---------------------------Recommendation response: $internalData")
-
-                if (internalData.has("images")) {
-                    val imagesArray = internalData.getJSONArray("images")
-                    for (i in 0 until imagesArray.length()) {
-                        val imageUrl = imagesArray.getString(i)
-                        // Update your image lists. Here, we assume these images are 2D.
-                        latestImageUrl = imageUrl
-                        imageUrlList2d.add(imageUrl)
-                        // Optionally, if you want to use these for 3D visualization, add to imageUrlList as needed.
-                         imageUrlList.add(imageUrl.replace(".jpg",".glb"))
-
-                        runOnUiThread {
-                            visualize3DButton.isEnabled = true // modified: enable 3D visualize button after retrieving image
-                            messages.add(
-                                ChatMessage(
-                                    imageUrl = imageUrl,
-                                    isSent = false,
-                                    isReply = true
-                                )
-                            )
-                            chatAdapter.notifyItemInserted(messages.size - 1)
-                            chatRecyclerView.smoothScrollToPosition(messages.size - 1)
-                        }
-                    }
-                }
-            }
-
-            // Optionally, if you have additional data (e.g., "content" or "content_scrapped")
-            // you can continue handling it using your existing method.
-            val apiResponse = Gson().fromJson(response, ApiResponse::class.java)
-            handleApiImages(apiResponse)
         } catch (e: Exception) {
             Log.e("ChatActivity", "Response handling failed", e)
-            handleError(e)
+            handleTextResponse("Sorry, I had trouble processing that request. Please try again.")
         }
     }
 
-    private fun handleApiImages(apiResponse: ApiResponse) {
-        apiResponse.content?.let { items ->
-            items.forEach { item ->
-                item.image_2d?.let {
-                    latestImageUrl = it
-                    imageUrlList2d.add(it)
-                    visualize3DButton.isEnabled = true // modified: enable 3D visualize button after retrieving image
-                }
-                item.image_3d?.let { imageUrlList.add(it) }
-
-                runOnUiThread {
-
-                    messages.add(ChatMessage(
-                        imageUrl = item.image_2d,
-                        isSent = false,
-                        isReply = true
-                    ))
-
-                    chatAdapter.notifyItemInserted(messages.size - 1)
-                    chatRecyclerView.smoothScrollToPosition(messages.size - 1)
-                }
+    private fun handleFurnitureResults(jsonResponse: JSONObject) {
+        try {
+            val resultsArray = jsonResponse.getJSONArray("results")
+            val formattedResponse = StringBuilder().apply {
+                append("Here are the furniture items I found:\n\n")
             }
-        } ?: run {
-            apiResponse.content_scrapped?.let {
-                runOnUiThread {
-                    messages.add(ChatMessage(
-                        message = it,
-                        isSent = false,
-                        isReply = true
-                    ))
-                    chatAdapter.notifyItemInserted(messages.size - 1)
-                    chatRecyclerView.smoothScrollToPosition(messages.size - 1)
-                }
+
+            for (i in 0 until resultsArray.length()) {
+                val item = resultsArray.getJSONObject(i)
+                val title = item.getString("title")
+                val url = item.getString("url")
+
+                formattedResponse.append("• ${title.trim()}\n")
+                formattedResponse.append("   ${createClickableLink(url)}\n\n")
             }
+
+            handleFormattedResults(formattedResponse.toString())
+
+        } catch (e: Exception) {
+            Log.e("ChatActivity", "Error processing furniture results", e)
+            handleTextResponse("Found some items but had trouble displaying them properly")
         }
     }
 
+    private fun createClickableLink(url: String): String {
+        return "<a href=\"$url\">View Product</a>"
+    }
+
+    private fun handleFormattedResults(formattedText: String) {
+        runOnUiThread {
+            val spannedText = Html.fromHtml(formattedText, Html.FROM_HTML_MODE_LEGACY)
+            messages.add(
+                ChatMessage(
+                    message = spannedText.toString(),
+                    isSent = false,
+                    isReply = true
+                )
+            )
+            chatAdapter.notifyItemInserted(messages.size - 1)
+            chatRecyclerView.smoothScrollToPosition(messages.size - 1)
+        }
+    }
+
+
+    private fun tryParseJson(response: String): Any? {
+        return try {
+            JSONTokener(response).nextValue()
+        } catch (e: JSONException) {
+            null
+        }
+    }
+
+    private fun handleRagResponse(jsonArray: JSONArray) {
+        Log.d("ChatActivity", "Handling RAG response: ${jsonArray.toString()}")
+
+        val imageItems = mutableListOf<String>()
+        var textResponse = ""
+
+        for (i in 0 until jsonArray.length()) {
+            try {
+                when (val item = jsonArray[i]) {
+                    is JSONObject -> {
+                        item.optString("image_path").takeIf { it.isNotEmpty() }?.let {
+                            val cleanPath = it.replace(" ", "_")
+                            if (!imageItems.contains(cleanPath)) {
+                                imageItems.add(cleanPath)
+                            }
+                        }
+                    }
+                    is String -> {
+                        // Append text responses, maintaining formatting
+                        if (textResponse.isNotEmpty()) {
+                            textResponse += "\n"
+                        }
+                        textResponse += item.replace("\\n", "\n")
+                            .replace(Regex("""[\[\]{}"]"""), "")
+                            .trim()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatActivity", "Error processing array item: ${jsonArray[i]}", e)
+            }
+        }
+
+        // Process images first
+        imageItems.forEach { imagePath ->
+            val imageUrl = buildImageUrl(imagePath)
+            handleImageUrl(imageUrl)
+        }
+
+        // Then handle text response
+        when {
+            textResponse.isNotEmpty() -> handleTextResponse(textResponse)
+            imageItems.isNotEmpty() -> handleTextResponse("Here are the items I found:")
+            else -> handleTextResponse("I found some items but couldn't display them properly.")
+        }
+    }
+
+    private fun handlePotentialMalformedResponse(response: String) {
+        // Handle potential scraper response first
+        if (response.contains("## Final Answer:")) {
+            handleTextResponse(extractFinalAnswer(response))
+            return
+        }
+
+        // Check for furniture-related response patterns
+        val imagePattern = Regex("""image_path["']?\s*[:=]\s*["']?([\w\s_\-/]+\.(?:jpg|png|jpeg))""", RegexOption.IGNORE_CASE)
+        val textPattern = Regex("""(?:Here are the furniture items I found for you:[\s\S]*?)(?=\\n}|$|\{)""")
+
+        val images = imagePattern.findAll(response)
+            .map { it.groupValues[1].replace(" ", "_") }
+            .distinct()
+            .toList()
+
+        val textMatch = textPattern.find(response)?.value
+            ?.replace("\\n", "\n")
+            ?.replace(Regex("""[\[\]{}"]"""), "")
+            ?.trim()
+
+        if (images.isNotEmpty() || textMatch != null) {
+            // Process found images
+            images.forEach { imagePath ->
+                handleImageUrl(buildImageUrl(imagePath))
+            }
+
+            // Handle any text content
+            textMatch?.let { handleTextResponse(it) }
+                ?: if (images.isNotEmpty()) handleTextResponse("Here are the items I found:") else TODO()
+        } else {
+            // Fallback to treating as plain text response
+            handleTextResponse(response.replace("\\n", "\n").trim())
+        }
+    }
+
+    private fun handleJsonObject(jsonObject: JSONObject) {
+        Log.d("ChatActivity", "Handling JSON object response")
+
+        when {
+            jsonObject.has("image_path") -> {
+                val imagePath = jsonObject.getString("image_path")
+                handleImageUrl(buildImageUrl(imagePath))
+
+                // Check for additional text content
+                jsonObject.optString("caption")?.takeIf { it.isNotEmpty() }?.let {
+                    handleTextResponse(it)
+                }
+            }
+            else -> handleTextResponse(jsonObject.toString())
+        }
+    }
+
+    private fun buildImageUrl(imagePath: String): String {
+        val baseUrl = "http://13.92.86.232/static/" // Replace with your actual base URL
+        return "$baseUrl/${imagePath.replace(" ", "_")}"
+    }
+
+
+    private fun extractFinalAnswer(text: String): String {
+        val pattern = Regex("## Final Answer:(.*?)(?:\$|#)", RegexOption.DOT_MATCHES_ALL)
+        return pattern.find(text)?.groupValues?.get(1)?.trim() ?: text
+    }
+
+    // Existing UI update methods
+    private fun handleImageUrl(imageUrl: String) {
+        Log.d("ChatActivity", "Processing image URL: $imageUrl")
+
+        latestImageUrl = imageUrl
+        imageUrlList2d.add(imageUrl)
+        imageUrlList.add(imageUrl.replace(".jpg", ".glb"))
+
+        runOnUiThread {
+            visualize3DButton.isEnabled = true
+            messages.add(
+                ChatMessage(
+                    imageUrl = imageUrl,
+                    isSent = false,
+                    isReply = true
+                )
+            )
+            chatAdapter.notifyItemInserted(messages.size - 1)
+            chatRecyclerView.smoothScrollToPosition(messages.size - 1)
+        }
+    }
+
+    private fun handleTextResponse(text: String) {
+        Log.d("ChatActivity", "Processing text response: $text")
+
+        runOnUiThread {
+            messages.add(
+                ChatMessage(
+                    message = text,
+                    isSent = false,
+                    isReply = true
+                )
+            )
+            chatAdapter.notifyItemInserted(messages.size - 1)
+            chatRecyclerView.smoothScrollToPosition(messages.size - 1)
+        }
+    }
     private fun handleRecommendationResponse(response: String) {
         try {
             Log.d("ChatActivity", "Recommendation response: $response")

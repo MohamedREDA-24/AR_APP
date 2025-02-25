@@ -14,7 +14,7 @@ data class ContentItem(
 )
 
 data class ChatMessage(
-    val message: String? = null, // Text message (if applicable)
+    val message: CharSequence? = null, // Text message (if applicable)
     val imageUrl: String? = null, // Image path (if applicable)
     val model3dUrl: String? = null,  // For future 3D model loading
     val isSent: Boolean ,// True if the user sent the message, false for received

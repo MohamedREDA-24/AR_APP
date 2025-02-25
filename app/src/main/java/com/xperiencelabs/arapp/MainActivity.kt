@@ -74,7 +74,7 @@ class MainActivity : AppCompatActivity() {
                 drawerLayout.openDrawer(GravityCompat.START)
             }
         }
-         val BASE_IMAGE_URL = "http://13.92.86.232/static/" // Use your server URL
+        val BASE_IMAGE_URL = "http://13.92.86.232/static/" // Use your server URL
 
 
         // Setup the sidebar (RecyclerView).
@@ -89,8 +89,8 @@ class MainActivity : AppCompatActivity() {
             passedImageUrlList.mapIndexed { index, url ->
                 ModelItem(
                     "Item ${index + 1}",
-                    BASE_IMAGE_URL + url,
-                    BASE_IMAGE_URL + (imageUrlList2d?.get(index) ?: "")
+                     url,
+                     (imageUrlList2d?.get(index) ?: "")
                 )
             }
         } else {

@@ -1,5 +1,7 @@
 package com.xperiencelabs.arapp
 
+import android.text.Html
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,57 +19,48 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
         private const val VIEW_TYPE_TEXT_REPLY = 2
         private const val VIEW_TYPE_IMAGE_SENT = 3
         private const val VIEW_TYPE_IMAGE_REPLY = 4
-        private const val BASE_IMAGE_URL = "http://13.92.86.232/static/" // For server images
+        private const val BASE_IMAGE_URL = "http://13.92.86.232/static/"
     }
 
-
-    // ViewHolder for text messages sent by the user
     inner class TextSentViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.message_text)
     }
 
-    // ViewHolder for text replies (bot responses)
     inner class TextReplyViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val messageText: TextView = itemView.findViewById(R.id.message_text)
     }
 
-    // ViewHolder for image messages
     inner class ImageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val chatImage: ImageView = itemView.findViewById(R.id.chat_image)
     }
 
     override fun getItemViewType(position: Int): Int {
-        val chatMessage = messages[position]
-        return if (chatMessage.imageUrl != null) {
-            if (chatMessage.isSent) VIEW_TYPE_IMAGE_SENT else VIEW_TYPE_IMAGE_REPLY
-        } else {
-            if (chatMessage.isSent) VIEW_TYPE_TEXT_SENT else VIEW_TYPE_TEXT_REPLY
+        return when {
+            messages[position].imageUrl != null && messages[position].isSent -> VIEW_TYPE_IMAGE_SENT
+            messages[position].imageUrl != null -> VIEW_TYPE_IMAGE_REPLY
+            messages[position].isSent -> VIEW_TYPE_TEXT_SENT
+            else -> VIEW_TYPE_TEXT_REPLY
         }
     }
 
-
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         return when (viewType) {
-            VIEW_TYPE_TEXT_SENT -> {
-                val view = LayoutInflater.from(parent.context)
+            VIEW_TYPE_TEXT_SENT -> TextSentViewHolder(
+                LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_chat_sent, parent, false)
-                TextSentViewHolder(view)
-            }
-            VIEW_TYPE_TEXT_REPLY -> {
-                val view = LayoutInflater.from(parent.context)
+            )
+            VIEW_TYPE_TEXT_REPLY -> TextReplyViewHolder(
+                LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_chat_received, parent, false)
-                TextReplyViewHolder(view)
-            }
-            VIEW_TYPE_IMAGE_SENT -> {
-                val view = LayoutInflater.from(parent.context)
+            )
+            VIEW_TYPE_IMAGE_SENT -> ImageViewHolder(
+                LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_chat_image_sent, parent, false)
-                ImageViewHolder(view)
-            }
-            VIEW_TYPE_IMAGE_REPLY -> {
-                val view = LayoutInflater.from(parent.context)
+            )
+            VIEW_TYPE_IMAGE_REPLY -> ImageViewHolder(
+                LayoutInflater.from(parent.context)
                     .inflate(R.layout.item_chat_image, parent, false)
-                ImageViewHolder(view)
-            }
+            )
             else -> throw IllegalArgumentException("Invalid view type")
         }
     }
@@ -77,20 +70,30 @@ class ChatAdapter(private val messages: List<ChatMessage>) :
         when (holder) {
             is TextSentViewHolder -> {
                 holder.messageText.text = chatMessage.message
+                holder.messageText.movementMethod = LinkMovementMethod.getInstance()
             }
             is TextReplyViewHolder -> {
-                holder.messageText.text = chatMessage.message
+                // Handle HTML-formatted responses with clickable links
+                chatMessage.message?.let {
+                    holder.messageText.text = Html.fromHtml(it.toString(), Html.FROM_HTML_MODE_LEGACY)
+                    holder.messageText.movementMethod = LinkMovementMethod.getInstance()
+                }
             }
             is ImageViewHolder -> {
-                // For user images, use the local URI directly; for server images, prepend BASE_IMAGE_URL.
-                val imageUrl = if (chatMessage.isSent && chatMessage.imageUrl?.startsWith("content://") == true)  {
-                    chatMessage.imageUrl
-                }  else {
-                    BASE_IMAGE_URL + chatMessage.imageUrl
+                val imageUrl = when {
+                    chatMessage.isSent && chatMessage.imageUrl?.startsWith("content://") == true ->
+                        chatMessage.imageUrl
+                    else ->
+//                        BASE_IMAGE_URL + chatMessage.imageUrl
+                        chatMessage.imageUrl
+
                 }
+
                 Glide.with(holder.itemView.context)
                     .load(imageUrl)
                     .transition(DrawableTransitionOptions.withCrossFade())
+//                    .placeholder(R.drawable.placeholder_image)
+//                    .error(R.drawable.error_image)
                     .into(holder.chatImage)
             }
         }
