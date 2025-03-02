@@ -102,7 +102,9 @@ class ChatActivity : AppCompatActivity() {
                     "3. Use the AR mode to try the selected furniture in your room and screenshot  an image that includes both your room and the chosen piece.\n\n" +
                     "4. Exit AR mode and click the external button (camera button) to either edit your room style or receive a new furniture suggestion.\n\n" +
                     "5. If prompted with “Recommend one? (yes/no)” and you respond with “no,” the system will fetch an alternative recommendation from trusted sources (e.g., Amazon).\n\n"+
-                    "6. You can repeat this cycle by confirming “New recommendation? (yes/no)” to view additional options.\n\n"
+                    "6. You can repeat this cycle by confirming “New recommendation? (yes/no)” to view additional options.\n\n"+
+                    "NOTE: Make sure that the uploaded image is not larger than 1MB.\n"
+
         )
         builder.setPositiveButton("OK") { dialog, _ ->
             dialog.dismiss()
