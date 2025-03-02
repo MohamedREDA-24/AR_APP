@@ -26,6 +26,9 @@ misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
 
+#mipmap
+android/app/src/main/res/mipmap-*
+
 # Keystore files
 *.jks
 *.keystore
